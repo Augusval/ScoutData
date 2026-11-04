@@ -108,45 +108,58 @@ CONFED = {
     "kiribati": "OFC", "marshall isl": "OFC", "palau": "OFC", "n marianas": "OFC",
     "american samoa": "OFC",
 }
-FLAGS = {
-    "spain": "🇪", "france": "🇷", "england": "🏴󠁢󠁮󠁿", "germany": "🇩",
-    "portugal": "🇵🇹", "netherlands": "🇳", "italy": "🇹", "belgium": "🇧🇪",
-    "argentina": "🇦", "brazil": "🇷", "morocco": "🇲", "japan": "🇯🇵",
-    "united states": "🇺", "mexico": "🇲🇽", "chile": "🇨", "uruguay": "🇾",
-    "colombia": "🇨🇴", "senegal": "🇸", "korea republic": "🇰", "australia": "🇦🇺",
-    "afghanistan": "🇦🇫", "iran": "🇮", "ir iran": "🇷", "saudi arabia": "🇸🇦",
-    "canada": "🇨🇦", "costa rica": "🇨🇷", "nigeria": "🇳🇬", "egypt": "🇪🇬",
-    "croatia": "🇭🇷", "switzerland": "🇨", "denmark": "🇰", "norway": "🇳🇴",
-    "poland": "🇵🇱", "serbia": "🇷🇸", "ukraine": "🇺", "sweden": "🇸🇪",
-    "turkiye": "🇹🇷", "tunisia": "🇹🇳", "cameroon": "🇨🇲", "ghana": "🇬",
-    "peru": "🇵🇪", "paraguay": "🇵🇾", "ecuador": "🇪", "venezuela": "🇻🇪",
-    "bolivia": "🇧🇴", "jamaica": "🇯🇲", "panama": "🇵🇦", "honduras": "🇭🇳",
-    "new zealand": "🇳🇿", "qatar": "🇶", "iraq": "🇶", "oman": "🇴🇲",
-    "bahrain": "🇧🇭", "uae": "🇦🇪", "china pr": "🇨", "korea dpr": "🇰🇵",
-    "vietnam": "🇻🇳", "thailand": "🇹", "indonesia": "🇮🇩", "malaysia": "🇲🇾",
-    "india": "🇮🇳", "uzbekistan": "🇺🇿", "jordan": "🇯🇴", "syria": "🇸",
-    "palestine": "🇵", "algeria": "🇩🇿", "ivory coast": "🇨🇮", "cote d'ivoire": "🇨",
-    "mali": "🇲🇱", "burkina faso": "🇧🇫", "cape verde": "🇨🇻", "angola": "🇦🇴",
-    "zambia": "🇿🇲", "uganda": "🇺", "dr congo": "🇨", "congo": "🇬",
-    "gabon": "🇬🇦", "south africa": "🇿", "guinea": "🇳", "wales": "🏴󠁢󠁬󠁳",
-    "scotland": "🏴󠁧󠁢󠁳󠁴", "ireland": "🇪", "greece": "🇬", "hungary": "🇺",
-    "russia": "🇷🇺", "slovakia": "🇸🇰", "czechia": "🇨🇿", "romania": "🇷🇴",
-    "austria": "🇦🇹", "iceland": "🇮", "finland": "🇮", "albania": "🇦🇱",
-    "georgia": "🇬", "montenegro": "🇪", "bulgaria": "🇧🇬", "kosovo": "🇽",
-    "north macedonia": "🇲🇰", "slovenia": "🇸", "belarus": "🇾", "armenia": "🇦🇲",
-    "azerbaijan": "🇦🇿", "israel": "🇮", "cyprus": "🇾", "malta": "🇲🇹",
-    "luxembourg": "🇱🇺", "latvia": "🇱🇻", "lithuania": "🇱🇹", "estonia": "🇪",
-    "moldova": "🇲", "faroe islands": "🇫🇴", "andorra": "🇦🇩",
-    "trinidad/tobago": "🇹🇹", "curacao": "🇨🇼", "el salvador": "🇸🇻",
-    "guatemala": "🇬🇹", "nicaragua": "🇳🇮", "cuba": "🇨", "haiti": "🇹",
-    "dominican republic": "🇩🇴", "suriname": "🇸", "guyana": "🇬🇾",
-    "bermuda": "🇧", "barbados": "🇧", "grenada": "🇩", "puerto rico": "🇵🇷",
-    "fiji": "🇫🇯", "tahiti": "🇵", "papua n g": "🇵", "solomon isl": "🇸🇧",
-    "vanuatu": "🇻", "new caledonia": "🇳🇨", "bosnia/herz": "🇧",
-    "arameans suryoye": "🏳️",
+
+# Bandera generada desde código ISO2 (ASCII) -> nunca se corrompe por codificación.
+# Los emoji de bandera son pares de "regional indicators" (U+1F1E6..U+1F1FF);
+# hardcodearlos se rompe al copiar/pegar entre tools. Derivarlos de 2 letras
+# ASCII es robusto y a prueba de clipboard.
+def _flag_from_iso(iso2: str) -> str:
+    iso2 = ''.join(c for c in str(iso2).upper() if c.isalpha())[:2]
+    if len(iso2) < 2:
+        return "\U0001F3F3\uFE0F"  # 🏳️ white flag (codepoint unico, seguro)
+    return ''.join(chr(0x1F1E6 + ord(c) - ord('A')) for c in iso2)
+
+# nombre normalizado -> codigo ISO2 alfa-2 (solo ASCII, a prueba de corruption)
+FLAGS_ISO = {
+    "spain": "ES", "france": "FR", "england": "GB-ENG", "germany": "DE",
+    "portugal": "PT", "netherlands": "NL", "italy": "IT", "belgium": "BE",
+    "argentina": "AR", "brazil": "BR", "morocco": "MA", "japan": "JP",
+    "united states": "US", "mexico": "MX", "chile": "CL", "uruguay": "UY",
+    "colombia": "CO", "senegal": "SN", "korea republic": "KR", "australia": "AU",
+    "afghanistan": "AF", "iran": "IR", "ir iran": "IR", "saudi arabia": "SA",
+    "canada": "CA", "costa rica": "CR", "nigeria": "NG", "egypt": "EG",
+    "croatia": "HR", "switzerland": "CH", "denmark": "DK", "norway": "NO",
+    "poland": "PL", "serbia": "RS", "ukraine": "UA", "sweden": "SE",
+    "turkiye": "TR", "tunisia": "TN", "cameroon": "CM", "ghana": "GH",
+    "peru": "PE", "paraguay": "PY", "ecuador": "EC", "venezuela": "VE",
+    "bolivia": "BO", "jamaica": "JM", "panama": "PA", "honduras": "HN",
+    "new zealand": "NZ", "qatar": "QA", "iraq": "IQ", "oman": "OM",
+    "bahrain": "BH", "uae": "AE", "china pr": "CN", "korea dpr": "KP",
+    "vietnam": "VN", "thailand": "TH", "indonesia": "ID", "malaysia": "MY",
+    "india": "IN", "uzbekistan": "UZ", "jordan": "JO", "syria": "SY",
+    "palestine": "PS", "algeria": "DZ", "cote d'ivoire": "CI", "ivory coast": "CI",
+    "mali": "ML", "burkina faso": "BF", "cape verde": "CV", "angola": "AO",
+    "zambia": "ZM", "uganda": "UG", "dr congo": "CD", "congo": "CG",
+    "gabon": "GA", "south africa": "ZA", "guinea": "GN", "wales": "GB-WLS",
+    "scotland": "GB-SCT", "ireland": "IE", "greece": "GR", "hungary": "HU",
+    "russia": "RU", "slovakia": "SK", "czechia": "CZ", "romania": "RO",
+    "austria": "AT", "iceland": "IS", "finland": "FI", "albania": "AL",
+    "georgia": "GE", "montenegro": "ME", "bulgaria": "BG", "kosovo": "XK",
+    "north macedonia": "MK", "slovenia": "SI", "belarus": "BY", "armenia": "AM",
+    "azerbaijan": "AZ", "israel": "IL", "cyprus": "CY", "malta": "MT",
+    "luxembourg": "LU", "latvia": "LV", "lithuania": "LT", "estonia": "EE",
+    "moldova": "MD", "faroe islands": "FO", "andorra": "AD",
+    "trinidad/tobago": "TT", "curacao": "CW", "el salvador": "SV",
+    "guatemala": "GT", "nicaragua": "NI", "cuba": "CU", "haiti": "HT",
+    "dominican republic": "DO", "suriname": "SR", "guyana": "GY",
+    "bermuda": "BM", "barbados": "BB", "grenada": "GD", "puerto rico": "PR",
+    "fiji": "FJ", "tahiti": "PF", "papua n g": "PG", "solomon isl": "SB",
+    "vanuatu": "VU", "new caledonia": "NC", "bosnia/herz": "BA",
+    "arameans suryoye": "",  # diaspora, sin ISO2 -> cae a 🏳️ a proposito
 }
+
 CONFED_LABEL = {
-    "UEFA": "🇪🇺 UEFA (Europa)", "CONMEBOL": "🛰️ CONMEBOL (Sudamérica)",
+    "UEFA": "🏆 UEFA (Europa)", "CONMEBOL": "🛰️ CONMEBOL (Sudamérica)",
     "CAF": "🌍 CAF (África)", "AFC": "🌏 AFC (Asia / Oceanía)",
     "CONCACAF": "🌎 CONCACAF (Norteamérica)", "OFC": "🏝️ OFC (Oceanía)",
     "No FIFA": "🏳️ No FIFA / Diáspora",
@@ -278,7 +291,7 @@ def get_confederation(team: str) -> str:
 
 
 def get_flag(team: str) -> str:
-    return FLAGS.get(_norm(team), "🏳️")
+    return _flag_from_iso(FLAGS_ISO.get(_norm(team), ""))
 
 
 def get_head_to_head(home: str, away: str, df: pd.DataFrame, n: int = 6) -> pd.DataFrame:
