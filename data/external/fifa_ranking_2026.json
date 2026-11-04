@@ -1,6 +1,12 @@
 {
-  "timestamp": "2026-10-07",
-  "source": "FIFA Official (Oct 2026)",
+  "timestamp": "2026-11-03T22:56:13.477569",
+  "sources": [
+    "Wikipedia Top 20 (FIFA oficial)",
+    "Ranking extendido local (150 equipos, base ELO)"
+  ],
+  "source": "Wikipedia Top 20 (FIFA oficial) + Ranking extendido local (150 equipos, base ELO)",
+  "count": 150,
+  "methodology": "Top 20: puntos FIFA oficiales (Wikipedia). Equipos 21-150: rating ELO convertido a escala FIFA (0.85*ELO-300).",
   "ranking": {
     "spain": {
       "rank": 1,
@@ -84,123 +90,523 @@
     },
     "denmark": {
       "rank": 21,
-      "points": 1631.5
+      "points": 1276.78
     },
     "austria": {
       "rank": 22,
-      "points": 1620.8
+      "points": 1264.85
     },
-    "south korea": {
+    "korea republic": {
       "rank": 23,
-      "points": 1615.2
+      "points": 1170.5
     },
     "australia": {
       "rank": 24,
-      "points": 1608.9
+      "points": 1218.15
     },
-    "turkey": {
+    "turkiye": {
       "rank": 25,
-      "points": 1605.3
+      "points": 1202.8
     },
     "ukraine": {
       "rank": 26,
-      "points": 1598.7
+      "points": 1165.4
     },
     "sweden": {
       "rank": 27,
-      "points": 1592.4
+      "points": 1207.9
     },
     "poland": {
       "rank": 28,
-      "points": 1587.1
+      "points": 1132.25
     },
     "serbia": {
       "rank": 29,
-      "points": 1580.6
+      "points": 1130.55
     },
     "peru": {
       "rank": 30,
-      "points": 1575.2
+      "points": 1128.85
     },
-    "iran": {
+    "ir iran": {
       "rank": 31,
-      "points": 1568.9
+      "points": 1177.1
     },
     "wales": {
       "rank": 32,
-      "points": 1562.3
+      "points": 1128.85
     },
     "tunisia": {
       "rank": 33,
-      "points": 1558.7
+      "points": 1003.05
     },
-    "ivory coast": {
+    "cote d'ivoire": {
       "rank": 34,
-      "points": 1552.1
+      "points": 1164.55
     },
     "ecuador": {
       "rank": 35,
-      "points": 1548.6
+      "points": 1271.65
     },
     "scotland": {
       "rank": 36,
-      "points": 1542.9
+      "points": 1160.3
     },
     "algeria": {
       "rank": 37,
-      "points": 1538.4
+      "points": 1182.4
     },
     "egypt": {
       "rank": 38,
-      "points": 1532.8
+      "points": 1158.6
     },
     "venezuela": {
       "rank": 39,
-      "points": 1528.2
+      "points": 1172.2
     },
-    "czech republic": {
+    "czechia": {
       "rank": 40,
-      "points": 1522.7
+      "points": 1107.6
     },
     "romania": {
       "rank": 41,
-      "points": 1518.3
+      "points": 1020.9
     },
     "chile": {
       "rank": 42,
-      "points": 1512.9
+      "points": 1164.55
     },
     "paraguay": {
       "rank": 43,
-      "points": 1508.4
+      "points": 1260.6
     },
     "greece": {
       "rank": 44,
-      "points": 1502.8
+      "points": 1233.4
     },
     "hungary": {
       "rank": 45,
-      "points": 1498.3
+      "points": 1166.25
     },
     "nigeria": {
       "rank": 46,
-      "points": 1492.7
+      "points": 1154.35
     },
     "russia": {
       "rank": 47,
-      "points": 1488.2
+      "points": 1211.3
     },
     "slovakia": {
       "rank": 48,
-      "points": 1482.6
+      "points": 1126.3
     },
     "cameroon": {
       "rank": 49,
-      "points": 1478.1
+      "points": 1078.7
     },
     "ghana": {
       "rank": 50,
-      "points": 1472.5
+      "points": 985.2
+    },
+    "canada": {
+      "rank": 51,
+      "points": 1178.15
+    },
+    "costa rica": {
+      "rank": 52,
+      "points": 1048.95
+    },
+    "jamaica": {
+      "rank": 53,
+      "points": 1011.55
+    },
+    "panama": {
+      "rank": 54,
+      "points": 1105.9
+    },
+    "uzbekistan": {
+      "rank": 55,
+      "points": 1098.25
+    },
+    "saudi arabia": {
+      "rank": 56,
+      "points": 1093.15
+    },
+    "mali": {
+      "rank": 57,
+      "points": 1084.65
+    },
+    "georgia": {
+      "rank": 58,
+      "points": 1083.8
+    },
+    "jordan": {
+      "rank": 59,
+      "points": 1078.7
+    },
+    "israel": {
+      "rank": 60,
+      "points": 1076.15
+    },
+    "bolivia": {
+      "rank": 61,
+      "points": 1071.05
+    },
+    "albania": {
+      "rank": 62,
+      "points": 1070.2
+    },
+    "iceland": {
+      "rank": 63,
+      "points": 1057.45
+    },
+    "south africa": {
+      "rank": 64,
+      "points": 1055.75
+    },
+    "haiti": {
+      "rank": 65,
+      "points": 1028.65
+    },
+    "angola": {
+      "rank": 66,
+      "points": 1027.8
+    },
+    "uae": {
+      "rank": 67,
+      "points": 1026.1
+    },
+    "cape verde": {
+      "rank": 68,
+      "points": 1026.1
+    },
+    "new zealand": {
+      "rank": 69,
+      "points": 1025.25
+    },
+    "iraq": {
+      "rank": 70,
+      "points": 1014.1
+    },
+    "belarus": {
+      "rank": 71,
+      "points": 1006.45
+    },
+    "finland": {
+      "rank": 72,
+      "points": 1000.5
+    },
+    "honduras": {
+      "rank": 73,
+      "points": 1000.5
+    },
+    "guatemala": {
+      "rank": 74,
+      "points": 995.4
+    },
+    "burkina faso": {
+      "rank": 75,
+      "points": 994.55
+    },
+    "palestine": {
+      "rank": 76,
+      "points": 984.35
+    },
+    "curacao": {
+      "rank": 77,
+      "points": 967.35
+    },
+    "montenegro": {
+      "rank": 78,
+      "points": 966.5
+    },
+    "syria": {
+      "rank": 79,
+      "points": 957.15
+    },
+    "qatar": {
+      "rank": 80,
+      "points": 948.65
+    },
+    "gambia": {
+      "rank": 81,
+      "points": 948.65
+    },
+    "oman": {
+      "rank": 82,
+      "points": 948.65
+    },
+    "guinea": {
+      "rank": 83,
+      "points": 943.55
+    },
+    "suriname": {
+      "rank": 84,
+      "points": 936.75
+    },
+    "uganda": {
+      "rank": 85,
+      "points": 935.05
+    },
+    "bulgaria": {
+      "rank": 86,
+      "points": 932.5
+    },
+    "benin": {
+      "rank": 87,
+      "points": 918.05
+    },
+    "gabon": {
+      "rank": 88,
+      "points": 907.85
+    },
+    "estonia": {
+      "rank": 89,
+      "points": 895.1
+    },
+    "vietnam": {
+      "rank": 90,
+      "points": 889.15
+    },
+    "faroe islands": {
+      "rank": 91,
+      "points": 887.45
+    },
+    "libya": {
+      "rank": 92,
+      "points": 884.9
+    },
+    "eq guinea": {
+      "rank": 93,
+      "points": 883.2
+    },
+    "zambia": {
+      "rank": 94,
+      "points": 882.35
+    },
+    "kazakhstan": {
+      "rank": 95,
+      "points": 878.95
+    },
+    "rwanda": {
+      "rank": 96,
+      "points": 878.95
+    },
+    "mozambique": {
+      "rank": 97,
+      "points": 876.4
+    },
+    "luxembourg": {
+      "rank": 98,
+      "points": 875.55
+    },
+    "zimbabwe": {
+      "rank": 99,
+      "points": 873.85
+    },
+    "thailand": {
+      "rank": 100,
+      "points": 872.15
+    },
+    "comoros": {
+      "rank": 101,
+      "points": 870.45
+    },
+    "korea dpr": {
+      "rank": 102,
+      "points": 868.75
+    },
+    "madagascar": {
+      "rank": 103,
+      "points": 866.2
+    },
+    "niger": {
+      "rank": 104,
+      "points": 864.5
+    },
+    "togo": {
+      "rank": 105,
+      "points": 861.1
+    },
+    "armenia": {
+      "rank": 106,
+      "points": 850.9
+    },
+    "guinea-bissau": {
+      "rank": 107,
+      "points": 850.9
+    },
+    "cyprus": {
+      "rank": 108,
+      "points": 844.1
+    },
+    "kenya": {
+      "rank": 109,
+      "points": 843.25
+    },
+    "china pr": {
+      "rank": 110,
+      "points": 842.4
+    },
+    "sudan": {
+      "rank": 111,
+      "points": 838.9
+    },
+    "trinidad/tobago": {
+      "rank": 112,
+      "points": 838.05
+    },
+    "mauritania": {
+      "rank": 113,
+      "points": 834.65
+    },
+    "malaysia": {
+      "rank": 114,
+      "points": 831.25
+    },
+    "dominican republic": {
+      "rank": 115,
+      "points": 831.25
+    },
+    "indonesia": {
+      "rank": 116,
+      "points": 828.7
+    },
+    "azerbaijan": {
+      "rank": 117,
+      "points": 827.0
+    },
+    "guyana": {
+      "rank": 118,
+      "points": 826.15
+    },
+    "el salvador": {
+      "rank": 119,
+      "points": 825.3
+    },
+    "bahrain": {
+      "rank": 120,
+      "points": 816.8
+    },
+    "kyrgyzstan": {
+      "rank": 121,
+      "points": 815.95
+    },
+    "martinique": {
+      "rank": 122,
+      "points": 813.4
+    },
+    "sierra leone": {
+      "rank": 123,
+      "points": 811.7
+    },
+    "namibia": {
+      "rank": 124,
+      "points": 809.15
+    },
+    "botswana": {
+      "rank": 125,
+      "points": 800.65
+    },
+    "burundi": {
+      "rank": 126,
+      "points": 798.95
+    },
+    "tajikistan": {
+      "rank": 127,
+      "points": 796.4
+    },
+    "kuwait": {
+      "rank": 128,
+      "points": 795.55
+    },
+    "moldova": {
+      "rank": 129,
+      "points": 794.7
+    },
+    "lithuania": {
+      "rank": 130,
+      "points": 786.2
+    },
+    "lebanon": {
+      "rank": 131,
+      "points": 784.5
+    },
+    "liberia": {
+      "rank": 132,
+      "points": 784.5
+    },
+    "tanzania": {
+      "rank": 133,
+      "points": 784.5
+    },
+    "ethiopia": {
+      "rank": 134,
+      "points": 777.7
+    },
+    "malta": {
+      "rank": 135,
+      "points": 773.45
+    },
+    "nicaragua": {
+      "rank": 136,
+      "points": 766.65
+    },
+    "fr guiana": {
+      "rank": 137,
+      "points": 759.85
+    },
+    "latvia": {
+      "rank": 138,
+      "points": 758.9
+    },
+    "cuba": {
+      "rank": 139,
+      "points": 758.15
+    },
+    "malawi": {
+      "rank": 140,
+      "points": 755.7
+    },
+    "yemen": {
+      "rank": 141,
+      "points": 755.7
+    },
+    "guadeloupe": {
+      "rank": 142,
+      "points": 753.15
+    },
+    "mayotte": {
+      "rank": 143,
+      "points": 734.45
+    },
+    "st vincent/grenadines": {
+      "rank": 144,
+      "points": 731.9
+    },
+    "turkmenistan": {
+      "rank": 145,
+      "points": 726.8
+    },
+    "central african republic": {
+      "rank": 146,
+      "points": 726.8
+    },
+    "congo": {
+      "rank": 147,
+      "points": 725.95
+    },
+    "eritrea": {
+      "rank": 148,
+      "points": 725.1
+    },
+    "lesotho": {
+      "rank": 149,
+      "points": 708.95
+    },
+    "new caledonia": {
+      "rank": 150,
+      "points": 708.1
     }
   }
 }
