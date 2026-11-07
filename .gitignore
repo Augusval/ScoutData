@@ -1,27 +1,32 @@
-# Datos (NUNCA subir datasets pesados a GitHub)
-data/raw/*.csv
-data/processed/*.csv
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-
-# Entorno virtual
+# --- Python / entornos ---
 venv/
 .venv/
-
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.egg-info/
-dist/
-build/
-
-# Jupyter
+.pytest_cache/
 .ipynb_checkpoints/
-*.ipynb
+*.log
 
-# IDE y OS
+# --- Datos: raw se descarga de Kaggle (ver README), processed/external SÍ van ---
+data/raw/
+# data/processed/   <- incluido a proposito (permite "clonar y correr")
+# data/external/*.json  <- incluido (ranking versionado)
+
+# --- Modelos: incluidos para que la API responda sin reentrenar ---
+# (descomentá la línea de abajo SOLO si los .joblib pesan >50MB)
+# src/models/*.joblib
+
+# --- IDE / SO ---
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# --- Secrets (la API key de API-Football NUNCA se commitea) ---
+.env
+*.key
+secrets/
+
+# --- Node (por si algún día hay tooling JS adentro; el repo Expo es HERMANO, no hijo) ---
+node_modules/
