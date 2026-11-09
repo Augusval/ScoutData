@@ -1,58 +1,90 @@
-# ⚽ ScoutData — Hybrid Football Prediction Engine (ML + REST API)
+# ⚽ ScoutData — Hybrid Football Prediction Engine (ML + REST API + Live + Clubs)
 
-End-to-end system that predicts international football outcomes by fusing **dual XGBoost regressors** with a **parametric Elo-calibration layer**, turning expected goals into realistic 1X2 probabilities via the **Poisson distribution**. Shipped as a **multi-page Streamlit dashboard** *and* a **contract-first FastAPI service** that share a single, framework-agnostic engine.
+End-to-end football prediction system with **two model heads**:
 
-![Python](https://img.shields.io/badge/Python-3.15-blue) ![XGBoost](https://img.shields.io/badge/ML-XGBoost-orange) ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688) ![Streamlit](https://img.shields.io/badge/UI-Streamlit-red) ![pytest](https://img.shields.io/badge/tests-16%20passed-brightgreen) ![License](https://img.shields.io/badge/License-MIT-green)
+- **National teams**: FIFA/ELO hybrid ensemble for international matches.
+- **Clubs**: intra-league ELO hybrid ensemble for major European domestic leagues.
+
+Both heads share the same transparent architecture: dual XGBoost expected-goals regressors + parametric rating-difference calibration + Poisson probability layer. Shipped as a **multi-page Streamlit dashboard**, a **contract-first FastAPI service**, and a **live match feed** powered by API-Football.
+
+![Python](https://img.shields.io/badge/Python-3.15-blue)
+![XGBoost](https://img.shields.io/badge/ML-XGBoost-orange)
+![FastAPI](https://img.shields.io/badge/API-FastAPI-009688)
+![Streamlit](https://img.shields.io/badge/UI-Streamlit-red)
+![pytest](https://img.shields.io/badge/tests-30%20passed-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ---
 
 ## 🎯 The problem
 
-Binary classifiers ("does the home team win?") fail twice in football:
-1. **Unrealistic extremes** — they cap near ~60–70% even in mismatches (e.g. France vs. a non-FIFA side), because tree models cannot extrapolate beyond their training distribution.
-2. **Scoreline blindness** — they ignore the structure of the game (goals, not just outcomes).
+Naïve football predictors fail in two ways:
 
-ScoutData solves both by predicting **expected goals (xG)** per team and deriving probabilities from a Poisson model — the mathematical backbone used by professional betting syndicates and club analytics departments.
+1. **Unrealistic extremes** — binary classifiers cannot extrapolate mismatches like France vs. a non-FIFA side.
+2. **Domain blindness** — a national-team model should not pretend to understand club football, and a club model should not fake cross-league comparisons when the source cannot support them.
 
-## 🧬 Architecture: a hybrid ensemble with magnitude-gated blending
+ScoutData solves this with a **hybrid ensemble** and **explicit domain boundaries**:
+
+- National matches: FIFA/ELO rating difference + ML.
+- Club matches: intra-league ELO + ML.
+- Unknown or non-comparable matchups: honest `None` / HTTP 404 / UI caption, never an invented number.
+
+---
+
+## 🧬 Architecture: one ensemble, two heads
 
 Every prediction fuses two independent signals:
 
-| Layer | Source | Role |
-|-------|--------|------|
-| **1. ML regressors** | Dual XGBoost (home xG, away xG) on 18 leak-free features | Dominates in evenly-matched games where training data is dense |
-| **2. Parametric Elo** | Exponential map of FIFA rating difference → λ (goals) | Extrapolates correctly to extreme mismatches where trees cannot |
+| Layer | National head | Club head |
+|---|---|---|
+| ML regressors | Dual XGBoost for home/away xG | Dual XGBoost for home/away club xG |
+| Parametric signal | FIFA/ELO rating difference | Intra-league ELO difference |
+| Probability layer | Poisson goal model | Poisson goal model |
+| Blend gate | Magnitude of rating gap | Magnitude of ELO gap |
 
-The blend weight is **gated by matchup magnitude**:
+The blend weight grows when the matchup becomes extreme:
 
-```
-advantage = |fifa_home − fifa_away| / 400
+```text
+advantage = |rating_home - rating_away| / divisor
 w_param   = min(1.0, advantage / 3.0)
-xG_final  = (1 − w_param) · xG_ML  +  w_param · xG_parametric
+xG_final  = (1 - w_param) * xG_ML + w_param * xG_parametric
 ```
 
-Validated on two extremes, in the same build:
+Calibration:
 
-| Matchup | Δ FIFA | w_param | 1 / X / 2 | Reading |
-|---------|--------|---------|-----------|---------|
-| France vs. amateur | +1259 | **100%** | 88.2 / 8.4 / 3.2 | ML has no data → formula leads |
-| Argentina vs. Spain (#2 vs #1) | −39 | **3%** | 41 / 28 / 30 | ML has thousands of examples → it leads |
+- National head uses FIFA-point scale, divisor around 400.
+- Club head uses intra-league ELO scale, divisor 150, derived from the observed ELO distribution:
+  - national extreme ≈ 1259 FIFA points → 1259 / 400 ≈ 3.15
+  - club extreme ≈ 460 ELO points → 460 / 150 ≈ 3.07
 
-The per-prediction blend is exposed in both the UI and the API, so the system is **self-explaining**, not a black box.
+This preserves the same parametric behavior across domains without reusing an ill-scaled constant.
 
-## 🔌 One engine, two fronts (the decoupling payoff)
+---
 
-All domain logic lives in [`src/engine/predictor.py`](src/engine/predictor.py) — **pure Python, zero Streamlit imports**. That single module is consumed by:
+## 🔌 One engine, several fronts
 
-- the **Streamlit dashboard** (`app/app.py`) — presentation + routing only;
-- the **FastAPI service** (`api_fastapi.py`) — HTTP contract only;
-- the **pytest suite** (`tests/`) — runs against the engine *and* the API.
+All domain logic is framework-agnostic:
 
-A dedicated test (`test_convergence_motor_equals_api`) proves the engine and the HTTP endpoint return **identical numbers** (88.2 / 3.18 / 100%) despite loading the models separately — so UI and backend cannot silently drift. This is the concrete reward of having decoupled the engine first.
+- `src/engine/predictor.py` — national engine, pure Python.
+- `src/engine/predictor_clubs.py` — club engine, pure Python.
+- `src/data/fetch_live.py` — live fixture fetcher, stdlib only.
+- `src/data/fetch_club_results.py` — historical club results downloader.
+- `src/data/create_club_features.py` — point-in-time club feature engineering.
+- `src/data/train_club_model.py` — dual XGBoost club training.
 
-## 🌐 REST API (contract-first)
+These modules are consumed by:
 
-`POST /v1/predict` validates input (Pydantic) **and** output (`response_model`), injects the engine via `Depends` + `lru_cache` (no mutable global), and **filters undeclared fields** from the response. Interactive OpenAPI docs at `/docs`.
+- the **Streamlit dashboard** (`app/app.py`);
+- the **FastAPI service** (`api_fastapi.py`);
+- the **pytest suite** (`tests/`).
+
+A dedicated convergence test proves the engine and HTTP endpoint return identical numbers for both heads.
+
+---
+
+## 🌐 REST API
+
+### National teams
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/predict \
@@ -60,99 +92,287 @@ curl -X POST http://127.0.0.1:8000/v1/predict \
   -d '{"home":"France","away":"Arameans Suryoye"}'
 ```
 
-Returns a typed JSON with `xg.{ml,parametric,final}`, `blend.parametric_pct`, `probabilities_pct` and `most_likely_score`. Unknown teams → `404`; same team / missing field → `422`.
+Returns typed JSON with:
 
-## 🧪 Tests (16, green, zero-noise)
+- `xg.ml`, `xg.parametric`, `xg.final`
+- `blend.parametric_pct`
+- `probabilities_pct`
+- `most_likely_score`
+- ranking/domain metadata
 
-`pytest -v` runs the engine properties (extreme vs. even gating, ISO2 flags, head-to-head shape) and the API contract (404/422, singleton caching, response filtering, convergence). `pytest.ini` sets `max_warnings = 0` as a **ratchet**: any new warning fails the run (exit 6), while the one known third-party deprecation (Starlette) is filtered by an anchored regex — so filtered warnings don't count toward the maximum. The suite is a drift canary for both your code *and* the dependencies you silence.
+Errors:
 
-## 🧱 Feature engineering (18 features, zero leakage)
+- unknown team → `404`
+- same team → `422`
+- missing field → `422`
 
-- Rolling form (last 5): offensive & defensive goals/game.
-- Historical strength with **Bayesian shrinkage** `(wins + μ·K)/(matches + K)`, K=200 — prevents small-sample inflation for minor teams.
-- Team tier & experience ratio (log of matches played).
-- Explicit diffs (strength, attack, defense) so the model doesn't relearn subtraction.
-- Live FIFA World Ranking points (see below).
+### Clubs
 
-Team histories are updated **after** each match's features are computed → no future information leaks into training.
+```bash
+curl -X POST http://127.0.0.1:8000/v1/predict/club \
+  -H "Content-Type: application/json" \
+  -d '{"home":"Manchester City","away":"Norwich"}'
+```
 
-## 🌍 Self-updating ranking pipeline
+The club endpoint accepts API-Football-style names and canonicalizes them internally:
 
-A cascading pipeline keeps the FIFA signal fresh without hardcoding:
+```text
+Manchester City -> Man City
+Paris Saint-Germain -> Paris SG
+Atletico Madrid -> Ath Madrid
+```
 
-1. **Wikipedia** (BeautifulSoup) → official Top 20 FIFA points.
-2. **Local ELO snapshot** (150 teams) → converted to FIFA scale via `0.85·ELO − 300`.
-3. **Merge + fallback** → if any source fails, the last good JSON is reused.
+Errors:
 
-Run `python src/data/update_ranking.py`. Designed to be scheduled (Task Scheduler / GitHub Actions cron) for autonomous weekly refresh.
+- cross-league / unavailable pair → `404`
+- same team after canonicalization → `422`
+- missing field → `422`
 
-## 📱 Dashboard (multi-page, FotMob-style)
+Example honest failure:
 
-`streamlit run app/app.py` opens a navigable hub — **Jornada** (themed matchdays grouped by confederation, 1X2 bars inline), **Predicción** (full blend breakdown + Poisson + last-5 + head-to-head), **Ranking** (searchable table with progress bars), **Equipos** (team card + suggested rivals), **Modelo** (architecture & honest limits). Programmatic navigation uses a `pending_page` flag resolved *before* the sidebar radio instantiates, avoiding Streamlit's `WidgetAlreadyInstantiatedError`.
+```bash
+curl -X POST http://127.0.0.1:8000/v1/predict/club \
+  -H "Content-Type: application/json" \
+  -d '{"home":"Manchester City","away":"Barcelona"}'
+```
 
-> **Honest note:** there are no live scores or club fixtures — the engine is national-team and historical. Where FotMob shows "LIVE", ScoutData shows its **prediction** (🧠 chip). Live club data is a roadmap item (API-Football), not a fake.
+Returns `404`, because the club source is intra-league only and cannot compare Premier League vs. La Liga without a European-competition bridge.
+
+Interactive OpenAPI docs:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+---
+
+## 🔴 Live match feed
+
+The **Jornada** page shows a live strip powered by API-Football:
+
+- currently live matches;
+- score and minute;
+- grouped by followed league;
+- graceful degradation when no key/quota/calendar window is available.
+
+Setup:
+
+```powershell
+$env:SCOUTDATA_API_KEY = "YOUR_API_FOOTBALL_KEY"
+$env:SCOUTDATA_LEAGUE_IDS = "128,1032,39,140,15"
+```
+
+Discover league IDs:
+
+```powershell
+python src/data/fetch_live.py --discover Argentina
+```
+
+Free-tier limitation:
+
+- `live=all` works.
+- Historical/current-day league grids requiring `season=2026` are behind the free paywall.
+- Therefore the UI shows matches already kicking off, not all scheduled “NS” matches for the day.
+
+This limitation is documented in the UI and README, not hidden.
+
+---
+
+## 🏟️ Club model
+
+The club head uses **football-data.co.uk** historical results:
+
+- Premier League
+- La Liga
+- Serie A
+- Bundesliga
+- Ligue 1
+- 2014/15 → 2023/24
+- 18,085 matches
+- 160 canonical club names
+
+Pipeline:
+
+```powershell
+python src/data/fetch_club_results.py
+python src/data/create_club_features.py
+python src/data/train_club_model.py
+```
+
+Outputs:
+
+```text
+data/raw/club_results.csv                         # not committed
+data/processed/club_matches_with_features.csv     # committed
+src/models/xgboost_club_home.joblib               # committed
+src/models/xgboost_club_away.joblib               # committed
+```
+
+Club features are point-in-time:
+
+- ELO updated after each match;
+- rolling form from previous matches only;
+- Bayesian strength shrinkage;
+- experience ratio;
+- no future leakage.
+
+Club domain boundary:
+
+- ✅ intra-league European club matches present in history;
+- ❌ cross-league matches;
+- ❌ Champions/Europa League;
+- ❌ Argentine club league;
+- ❌ live 2026 ELO recalculation.
+
+For a live 2026 club match, the current implementation uses the latest historical encounter as a point-in-time proxy. This is explicitly labeled as a limitation.
+
+---
+
+## 🧪 Tests
+
+```powershell
+pip install -r requirements-test.txt
+pytest -v
+```
+
+Expected:
+
+```text
+30 passed
+```
+
+Coverage:
+
+- national engine properties;
+- club engine properties;
+- national API contract;
+- club API contract;
+- alias normalization;
+- cross-league 404 behavior;
+- same-team 422 behavior;
+- response-model filtering;
+- engine/API convergence for both heads.
+
+`pytest.ini` enforces a zero-warning ratchet:
+
+```ini
+max_warnings = 0
+```
+
+Known third-party warnings are filtered with anchored regexes, not silenced globally.
+
+---
 
 ## 🏗️ Project structure
 
-```
+```text
 ScoutData/
-├── api_fastapi.py                  # REST service (contract-first, Depends + response_model)
-├── app/app.py                      # Streamlit dashboard (UI + router only)
+├── api_fastapi.py                      # FastAPI service, two heads
+├── app/app.py                          # Streamlit dashboard
 ├── src/
-│   ├── engine/predictor.py         # ★ pure-Python engine (no Streamlit) — shared by all fronts
+│   ├── engine/
+│   │   ├── predictor.py                # national engine, pure Python
+│   │   └── predictor_clubs.py          # club engine, pure Python
 │   ├── data/
-│   │   ├── clean_data.py           # raw → processed
-│   │   ├── create_features.py      # 18-feature engineering (leak-free)
-│   │   ├── fetch_fifa_ranking.py   # ranking loader
-│   │   └── update_ranking.py       # cascading self-updater (Wikipedia + ELO + fallback)
-│   └── models/                     # dual XGBoost .joblib (committed → clone & run, no retrain)
-├── tests/                          # 16 pytest (engine properties + API contract + convergence)
+│   │   ├── fetch_live.py               # API-Football live fetcher, stdlib only
+│   │   ├── fetch_club_results.py       # football-data.co.uk downloader
+│   │   ├── create_club_features.py     # point-in-time club features
+│   │   ├── train_club_model.py         # dual XGBoost club training
+│   │   └── smoke_clubs.py              # club engine smoke test
+│   └── models/
+│       ├── xgboost_home_goals.joblib
+│       ├── xgboost_away_goals.joblib
+│       ├── xgboost_club_home.joblib
+│       └── xgboost_club_away.joblib
+├── tests/
+│   ├── test_engine.py
+│   ├── test_api.py
+│   └── test_clubs.py
 ├── data/
-│   ├── processed/                  # featured CSVs (committed)
-│   └── external/fifa_ranking_2026.json   # hybrid ranking (versioned)
-├── requirements.txt                # serving deps lock (no Streamlit, no test-deps)
-├── requirements-test.txt           # pytest + httpx
-├── pytest.ini                      # import-mode, testpaths, filterwarnings, max_warnings=0
+│   ├── processed/
+│   │   ├── matches_with_features.csv
+│   │   └── club_matches_with_features.csv
+│   └── external/
+│       └── fifa_ranking_2026.json
+├── requirements.txt
+├── requirements-test.txt
+├── pytest.ini
+├── .gitignore
 └── README.md
 ```
 
-## 🚀 Quick start (clone & run in 3 commands)
+---
 
-```bash
-python -m venv venv && venv\Scripts\activate          # Windows
-pip install -r requirements.txt                        # serving deps only
-uvicorn api_fastapi:app --reload                       # API at :8000, docs at /docs
-# or, for the dashboard:
-pip install streamlit && streamlit run app/app.py
-# tests:
-pip install -r requirements-test.txt && pytest -v      # expect 16 passed, exit 0
+## 🚀 Quick start
+
+```powershell
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-The raw dataset (international results, 1872→2024) is from Kaggle and intentionally **not** versioned; `data/processed/` and the committed `.joblib` let you run inference without retraining. To rebuild features/models from scratch, drop the raw CSV into `data/raw/` and run `create_features.py` → `train_model.py`.
+Run dashboard:
 
-## 📊 Validation (dual-extreme, same build)
+```powershell
+streamlit run app/app.py
+```
 
-| Scenario | w_param | Result | Why it matters |
-|----------|---------|--------|----------------|
-| Extreme mismatch (FR vs amateur) | 100% parametric | 88.2% home | Trees can't extrapolate → formula does |
-| Elite clash (AR vs ES) | 3% parametric | 41 / 28 / 30 | Dense training region → ML leads, no distortion |
-| Convergence (engine == HTTP) | — | identical decimals | One brain, two mouths — verified by execution |
+Run API:
+
+```powershell
+uvicorn api_fastapi:app --reload
+```
+
+Run tests:
+
+```powershell
+pip install -r requirements-test.txt
+pytest -v
+```
+
+The **Clubes** page works without an API key because it uses local committed models and processed features. The live strip requires `SCOUTDATA_API_KEY`.
+
+---
+
+## 📊 Validation
+
+| Scenario | Head | Result | Why it matters |
+|---|---|---|---|
+| France vs. amateur | National | ~100% parametric, high home win | Trees cannot extrapolate; formula does |
+| Argentina vs. Spain | National | low parametric weight, balanced 1X2 | ML leads in dense training region |
+| Man City vs. Norwich | Club | high ELO gap, high parametric weight | Club extreme handled correctly |
+| Arsenal vs. Chelsea | Club | moderate ELO gap, mixed blend | No artificial certainty in close games |
+| Man City vs. Barcelona | Club | `None` / HTTP 404 | Cross-league is outside source domain |
+| Engine vs. HTTP | Both | identical decimals | One brain, multiple mouths |
+
+---
 
 ## ⚠️ Honest limitations
 
-- FIFA ranking is a **current snapshot** used as a proxy for historical strength; production would use point-in-time ratings via the official API.
+- National FIFA ranking is a current snapshot, not point-in-time for every historical match.
 - Non-FIFA teams default to 700 points.
-- No lineup, injury, or in-play data.
-- Tree models cannot extrapolate alone — hence the parametric layer (a deliberate design choice, not a patch).
-- Not yet containerized: Docker is the next infra step (the decoupled engine makes a UI-free serving image trivial once the toolchain is available).
+- No lineups, injuries, weather, or in-play variables.
+- Tree models cannot extrapolate alone; the parametric layer is a deliberate design choice.
+- Live free tier does not expose current-season scheduled grids; only currently live matches are shown.
+- Club model is intra-league only.
+- Club model does not cover Champions/Europa League or Argentine club football.
+- Club live predictions use the latest historical encounter as a proxy, not a live 2026 ELO recalculation.
+- Not yet containerized; Docker is a roadmap item.
+
+---
 
 ## 🗺️ Roadmap
 
-- [ ] Dockerize the API + run the 16 tests *inside* the image (dev/prod parity; engine already decoupled for a UI-free image).
-- [ ] Club model: a second training head reusing the same hybrid ensemble, with league standings as the ranking signal (→ "predict the entire dataset", national + club).
-- [ ] Live fixtures via API-Football (`/v1/jornada`), fed by a cached worker — the FotMob "LIVE" strip, honestly sourced.
-- [ ] Expo/React Native client (separate repo) consuming `/v1/predict` over HTTP.
+- [ ] Dockerize API and run tests inside the image.
+- [ ] Incremental ELO worker for live club 2026 updates.
+- [ ] Paid API-Football tier or alternate source for current-season scheduled grids.
+- [ ] Argentine club source and second club regional head.
+- [ ] Expo/React Native mobile client consuming `/v1/predict` and `/v1/predict/club`.
+
+---
 
 ## 👤 Author
 
-**Augusto Valentini** — Informatics Engineering student at UADE (Buenos Aires). Built as a portfolio project demonstrating production-grade Data Science: reproducible pipelines, leak-free feature engineering, hybrid modeling, contract-first serving, and honest evaluation backed by automated tests.
+**Augusto Valentini** — Informatics Engineering student at UADE, Buenos Aires.
+
+Built as a portfolio project demonstrating production-grade Data Science and Software Engineering: reproducible pipelines, leak-free feature engineering, hybrid modeling, contract-first serving, domain-aware limitations, automated tests, and publishable repository hygiene.
