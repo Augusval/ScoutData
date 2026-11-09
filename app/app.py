@@ -1,9 +1,10 @@
 """
-ScoutData AI V13 - Football Analytics Hub (UI + EN VIVO real)
+ScoutData AI V14 - Football Analytics Hub (UI + EN VIVO real + CLUBES)
 ==========================================================================
 Presentacion Streamlit. TODA la logica de prediccion vive en
 src/engine/predictor.py (puro, sin streamlit). El en vivo vive en
-src/data/fetch_live.py (stdlib, sin streamlit). Aca solo hay codigo de UI
+src/data/fetch_live.py (stdlib, sin streamlit). La cabeza de clubes vive en
+src/engine/predictor_clubs.py (puro, sin streamlit). Aca solo hay codigo de UI
 (st.*), cache de presentacion y el router.
 
 Paginas: ⚽ Jornada | ⭐ Destacados | 🔮 Prediccion | 🏆 Ranking | 👥 Equipos | ℹ️ Modelo
@@ -30,6 +31,13 @@ from src.engine.predictor import (  # noqa: E402
 # predictor.py usa para traer fetch_fifa_ranking). fetch_live usa solo stdlib.
 sys.path.insert(0, str(PROJECT_DIR / "src" / "data"))
 from fetch_live import get_live_board, LIVE_STATUSES, FINISHED_STATUSES, PRE_STATUSES  # noqa: E402
+
+# SEGUNDA CABEZA: modelo de clubes (intra-liga europeo).
+from src.engine.predictor_clubs import (  # noqa: E402
+    load_club_models_pure,
+    load_club_data_pure,
+    predict_club_match,
+)
 
 st.set_page_config(page_title="ScoutData — Football Analytics Hub", page_icon="⚽", layout="wide")
 
@@ -58,6 +66,24 @@ def load_live_board():
     fetch_live ya tiene TTL 60; esta evita re-leer disco / re-agrupar en cada
     rerun de UI. 1 request cada 60s max (gracias al FIX E: board = live=all)."""
     return get_live_board()
+
+
+@st.cache_resource(show_spinner=False)
+def load_club_models_safe():
+    """Carga modelos de clubes si existen; si no, devuelve None (degrada UI)."""
+    try:
+        return load_club_models_pure()
+    except FileNotFoundError:
+        return None
+
+
+@st.cache_data(show_spinner=False, ttl=60)
+def load_club_data_safe():
+    """Carga features de clubes si existen; si no, devuelve None (degrada UI)."""
+    try:
+        return load_club_data_pure()
+    except FileNotFoundError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -102,31 +128,86 @@ def _status_chip(fx):
     return f"⏸ {s}"
 
 
-def render_live_card(fx, teams_set, model_home, model_away, df, fifa_ranking, key):
-    """Fila estilo FotMob: equipos + marcador/hora + chip de estado + boton condicional.
+def render_live_card(fx, teams_set, model_home, model_away, df, fifa_ranking,
+                     club_models, club_df, key):
+    """Fila estilo FotMob: equipos + marcador/hora + chip de estado + analisis condicional.
 
-    El boton 'Predecir' SOLO aparece si AMBOS equipos existen en el dataset de
-    selecciones. Si no (clubes, femenino, etc.), caption honesto -> el motor de
-    selecciones no puntua lo que no conoce (no mentimos con un numero inventado).
+    Orden de dominio:
+      1) Si el motor de SELECCIONES conoce a ambos equipos -> boton nacional.
+      2) Si no, intenta el motor de CLUBES (intra-liga europeo historico).
+      3) Si ninguno puede, caption honesto. No inventamos numeros.
     """
     hs = fx.get("hs"); as_ = fx.get("as")
     score = f"{hs if hs is not None else '-'} : {as_ if as_ is not None else '-'}"
     with st.container(border=True):
         c1, c2, c3 = st.columns([3, 1.4, 3])
         c1.markdown(f"**{fx['home']}**")
-        c2.markdown(f"<div style='text-align:center;font-size:1.25rem;font-weight:700'>{score}</div>", unsafe_allow_html=True)
+        c2.markdown(
+            f"<div style='text-align:center;font-size:1.25rem;font-weight:700'>{score}</div>",
+            unsafe_allow_html=True,
+        )
         c3.markdown(f"<div style='text-align:right'>**{fx['away']}**</div>", unsafe_allow_html=True)
+
         cc1, cc2 = st.columns([4, 1])
         cc1.caption(f"🏟️ {fx.get('venue') or '—'}  ·  {fx.get('kick_time') or ''}")
         cc2.markdown(_status_chip(fx))
+
+        # 1) Motor de selecciones (dataset historico de nacionales)
         if fx["home"] in teams_set and fx["away"] in teams_set:
             if st.button("🔮 Predecir este duelo", key=f"lv_{key}", use_container_width=True):
                 go_to_prediction(fx["home"], fx["away"], False)
+            return
+
+        # 2) Motor de clubes (intra-liga europeo, historic point-in-time)
+        club_res = None
+        if club_models is not None and club_df is not None:
+            mh, ma = club_models
+            try:
+                club_res = predict_club_match(fx["home"], fx["away"], False, mh, ma, club_df)
+            except Exception:
+                club_res = None
+
+        if club_res is not None:
+            p = club_res["probs"]
+            st.caption(
+                f"🧠 Clubes: xG **{club_res['xg_h']:.2f}-{club_res['xg_a']:.2f}** | "
+                f"1/X/2 **{p['home_win']:.0f}/{p['draw']:.0f}/{p['away_win']:.0f}** | "
+                f"blend **{club_res['w']*100:.0f}%** param | "
+                f"ELO diff **{club_res['elo_diff']:+.0f}**"
+            )
+            with st.expander("🔮 Ver análisis de clubes (último cruce histórico)", expanded=False):
+                c1, c2, c3 = st.columns(3)
+                c1.metric("xG local", f"{club_res['xg_h']:.2f}")
+                c2.metric("xG visitante", f"{club_res['xg_a']:.2f}")
+                c3.metric("Blend paramétrico", f"{club_res['w']*100:.0f}%")
+
+                st.markdown(
+                    f"📊 Probabilidades: **{p['home_win']:.1f}%** local / "
+                    f"**{p['draw']:.1f}%** empate / **{p['away_win']:.1f}%** visitante"
+                )
+                st.caption(
+                    f"🧠 ELO local {club_res['elo_h']:.0f} vs ELO visitante {club_res['elo_a']:.0f} "
+                    f"(diff {club_res['elo_diff']:+.0f})"
+                )
+                st.caption(
+                    f"📅 Último cruce en dataset: {club_res['date']} · {club_res['league']} · "
+                    f"canonical: {club_res['home']} vs {club_res['away']}"
+                )
+                st.caption(
+                    "⚠️ Limitación honesta: es un proxy histórico point-in-time del último cruce "
+                    "disponible en football-data.co.uk, no un ELO en vivo 2026. Cross-league, "
+                    "Champions/Europa League y Liga AR de clubes siguen fuera por fuente gratuita."
+                )
         else:
-            st.caption("🔜 Fuera del modelo de selecciones — próxima capa: **modelo de clubes** (mismo Hybrid Ensemble + tabla de posiciones como ranking).")
+            # 3) Caption honesto: ni selecciones ni clubes pueden predecir este matchup.
+            st.caption(
+                "🔜 Fuera del modelo actual — selecciones no lo conocen y clubes "
+                "no tiene histórico comparable en la fuente gratuita."
+            )
 
 
-def render_live_section(board, model_home, model_away, df, fifa_ranking, teams_set):
+def render_live_section(board, model_home, model_away, df, fifa_ranking, teams_set,
+                        club_models, club_df):
     """Tira roja + secciones por liga, desde board['live_by_league'] (v3).
 
     Degrada elegante: sin key -> tarjeta de setup; quota/red -> caption; ninguna
@@ -155,7 +236,17 @@ def render_live_section(board, model_home, model_away, df, fifa_ranking, teams_s
         for lname, rows in groups.items():
             with st.expander(f"{lname}  ·  {len(rows)} en vivo", expanded=True):
                 for i, fx in enumerate(rows):
-                    render_live_card(fx, teams_set, model_home, model_away, df, fifa_ranking, f"{lname}_{i}")
+                    render_live_card(
+                        fx,
+                        teams_set,
+                        model_home,
+                        model_away,
+                        df,
+                        fifa_ranking,
+                        club_models,
+                        club_df,
+                        f"{lname}_{i}",
+                    )
         st.divider()
     else:
         other = len(board.get("live", []))
@@ -167,6 +258,7 @@ def render_live_section(board, model_home, model_away, df, fifa_ranking, teams_s
         )
         st.divider()
 
+
 # ---------------------------------------------------------------------------
 # PAGINA: ⚽ JORNADA (en vivo real arriba + jornada tematica de selecciones abajo)
 # ---------------------------------------------------------------------------
@@ -176,17 +268,29 @@ def page_jornada():
     fifa_ranking = load_fifa_ranking()
     teams_set = set(df["home_team"].unique())
 
+    club_models = load_club_models_safe()
+    club_df = load_club_data_safe()
+
     st.title("⚽ Jornada")
     st.caption(
         "**Arriba:** jornada EN VIVO real vía API-Football (marcador + minuto de lo que está pitando ahora). "
         "**Abajo:** jornada histórica de selecciones con predicción del motor. Donde FotMob muestra “En vivo”, "
         "acá mostramos marcador real **y** nuestra predicción cuando el motor conoce a los equipos "
-        "(botón 🔮); si no los conoce (clubes, femenino), caption honesto de “próxima capa: clubes”."
+        "(botón 🔮); si no los conoce, caption honesto de limitación de fuente/modelo."
     )
     st.divider()
 
     board = load_live_board()
-    render_live_section(board, model_home, model_away, df, fifa_ranking, teams_set)
+    render_live_section(
+        board,
+        model_home,
+        model_away,
+        df,
+        fifa_ranking,
+        teams_set,
+        club_models,
+        club_df,
+    )
 
     selected = st.radio("Jornada", list(JORNADAS.keys()), horizontal=True, label_visibility="collapsed")
     pairs = [(h, a) for h, a in JORNADAS[selected] if h in teams_set and a in teams_set]
@@ -407,19 +511,21 @@ def page_modelo():
 | Capa | Rol |
 |------|-----|
 | **1. ML (dual XGBoost)** | Predice xG local/visitante desde 18 features leak-free. Domina en partidos parejos. |
-| **2. Paramétrica (Elo/FIFA)** | Mapea la diferencia de rating a goles esperados (función exponencial). Extrapola a extremos. |
+| **2. Paramétrica (Elo/FIFA o ELO clubes)** | Mapea la diferencia de rating a goles esperados (función exponencial). Extrapola a extremos. |
 
 El peso paramétrico crece con lo desbalanceado del cruce y se expone por predicción (transparencia, no caja negra).
 
-**Arquitectura desacoplada:** toda la lógica vive en `src/engine/predictor.py` (Python puro, **sin Streamlit**), de modo que la misma la consumen esta UI, una API REST (FastAPI) y tests unitarios. Acá (`app/app.py`) solo hay presentación y navegación.
+**Arquitectura desacoplada:** toda la lógica vive en `src/engine/predictor.py` (Python puro, **sin Streamlit**) y la segunda cabeza de clubes en `src/engine/predictor_clubs.py`. De modo que las consumen esta UI, una API REST (FastAPI) y tests unitarios. Acá (`app/app.py`) solo hay presentación y navegación.
 
-**En vivo real:** la tira roja de Jornada consume `src/data/fetch_live.py` (API-Football, solo stdlib). El board v3 agrupa los partidos pitando **por liga en memoria** (1 request, no 6), porque el free tier solo accede a seasons 2022-2024 en el endpoint de grilla — `live=all` sí funciona. Donde el motor de selecciones no conoce a los equipos (clubes, femenino), la UI muestra caption honesto de "próxima capa: clubes" en vez de un número inventado.
+**En vivo real:** la tira roja de Jornada consume `src/data/fetch_live.py` (API-Football, solo stdlib). El board v3 agrupa los partidos pitando **por liga en memoria** (1 request, no 6), porque el free tier solo accede a seasons 2022-2024 en el endpoint de grilla — `live=all` sí funciona.
 
-**Feature engineering:** forma ofensiva/defensiva (últimos 5), fuerza histórica con *shrinkage* bayesiano (K=200), team tier, experience ratio, diffs explícitos y puntos FIFA en vivo. Historiales actualizados *después* de cada partido → cero data leakage.
+**Clubes:** la segunda cabeza usa `football-data.co.uk` (histórico largo, sin quota) y ELO intra-liga point-in-time. Predice matchups europeos intra-liga existentes en el histórico. Cross-league, Champions/Europa League y Liga AR de clubes quedan fuera por limitación de fuente gratuita. La UI muestra caption honesto cuando el modelo no puede predecir; no inventa números.
+
+**Feature engineering:** forma ofensiva/defensiva (últimos 5), fuerza histórica con *shrinkage* bayesiano (K=200), team tier, experience ratio, diffs explícitos y puntos FIFA/ELO. Historiales actualizados *después* de cada partido → cero data leakage.
 
 **Ranking auto-actualizable:** cascada Wikipedia (Top 20 oficial) + snapshot ELO (150 equipos, escala `0.85·ELO−300`) + fallback. Ejecutá `python src/data/update_ranking.py`.
 
-**Limitaciones honestas:** ranking snapshot actual (no point-in-time); equipos sin FIFA = 700 pts; sin alineaciones/lesiones; los tree models no extrapolan solos — de ahí la capa paramétrica (decisión de diseño). La grilla de "programados no iniciados" (NS) del día requiere season 2026, behind paywall en free.
+**Limitaciones honestas:** ranking snapshot actual (no point-in-time); equipos sin FIFA = 700 pts; sin alineaciones/lesiones; los tree models no extrapolan solos — de ahí la capa paramétrica (decisión de diseño). La grilla de "programados no iniciados" (NS) del día requiere season 2026, behind paywall en free. El modelo de clubes usa proxy histórico del último cruce, no ELO en vivo 2026.
 
 **Stack:** Python · Pandas · XGBoost · Scikit-Learn · SciPy (Poisson) · Streamlit · FastAPI · BeautifulSoup · API-Football.
 
