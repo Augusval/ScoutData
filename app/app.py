@@ -1,5 +1,5 @@
 """
-ScoutData AI V14 - Football Analytics Hub (UI + EN VIVO real + CLUBES)
+ScoutData AI V15 - Football Analytics Hub (UI + EN VIVO real + CLUBES fijos)
 ==========================================================================
 Presentacion Streamlit. TODA la logica de prediccion vive en
 src/engine/predictor.py (puro, sin streamlit). El en vivo vive en
@@ -7,7 +7,7 @@ src/data/fetch_live.py (stdlib, sin streamlit). La cabeza de clubes vive en
 src/engine/predictor_clubs.py (puro, sin streamlit). Aca solo hay codigo de UI
 (st.*), cache de presentacion y el router.
 
-Paginas: ⚽ Jornada | ⭐ Destacados | 🔮 Prediccion | 🏆 Ranking | 👥 Equipos | ℹ️ Modelo
+Paginas: ⚽ Jornada | ⭐ Destacados | 🏟️ Clubes | 🔮 Prediccion | 🏆 Ranking | 👥 Equipos | ℹ️ Modelo
 Autor: Augusto Valentini
 """
 import sys
@@ -95,6 +95,14 @@ def go_to_prediction(home, away, neutral=False):
     st.session_state['sel_neutral'] = bool(neutral)
     st.session_state['pending_page'] = "Predicción"
     st.session_state['_nav_force'] = st.session_state.get('_nav_force', 0) + 1
+    st.rerun()
+
+
+def go_to_clubs(home, away):
+    st.session_state['club_home'] = home
+    st.session_state['club_away'] = away
+    st.session_state['pending_page'] = "Clubes"
+    st.session_state['_club_nav_force'] = st.session_state.get('_club_nav_force', 0) + 1
     st.rerun()
 
 
@@ -198,6 +206,9 @@ def render_live_card(fx, teams_set, model_home, model_away, df, fifa_ranking,
                     "disponible en football-data.co.uk, no un ELO en vivo 2026. Cross-league, "
                     "Champions/Europa League y Liga AR de clubes siguen fuera por fuente gratuita."
                 )
+
+            if st.button("🔗 Abrir en página Clubes", key=f"lvclub_{key}", use_container_width=True):
+                go_to_clubs(club_res["home"], club_res["away"])
         else:
             # 3) Caption honesto: ni selecciones ni clubes pueden predecir este matchup.
             st.caption(
@@ -274,9 +285,8 @@ def page_jornada():
     st.title("⚽ Jornada")
     st.caption(
         "**Arriba:** jornada EN VIVO real vía API-Football (marcador + minuto de lo que está pitando ahora). "
-        "**Abajo:** jornada histórica de selecciones con predicción del motor. Donde FotMob muestra “En vivo”, "
-        "acá mostramos marcador real **y** nuestra predicción cuando el motor conoce a los equipos "
-        "(botón 🔮); si no los conoce, caption honesto de limitación de fuente/modelo."
+        "**Abajo:** jornada histórica de selecciones con predicción del motor. "
+        "También tenés la página **🏟️ Clubes** para analizar duelos europeos intra-liga sin depender del horario."
     )
     st.divider()
 
@@ -334,7 +344,141 @@ def page_partidos():
 
 
 # ---------------------------------------------------------------------------
-# PAGINA: 🔮 PREDICCION (detalle + desglose del blend + cara a cara)
+# PAGINA: 🏟️ CLUBES (fija, independiente del en vivo)
+# ---------------------------------------------------------------------------
+def page_clubes():
+    club_models = load_club_models_safe()
+    club_df = load_club_data_safe()
+
+    st.title("🏟️ Clubes — modelo intra-liga europeo")
+    st.caption(
+        "Segunda cabeza del Hybrid Ensemble. Usa ELO point-in-time calculado desde el histórico de "
+        "football-data.co.uk (Premier League, La Liga, Serie A, Bundesliga, Ligue 1). "
+        "No depende del en vivo: podés analizar cualquier cruce histórico disponible cuando quieras."
+    )
+    st.divider()
+
+    if club_models is None or club_df is None:
+        st.info(
+            "🧱 Todavía no cargué los modelos de clubes. Para habilitar esta página, corré:\n\n"
+            "```\npython src/data/fetch_club_results.py\n"
+            "python src/data/create_club_features.py\n"
+            "python src/data/train_club_model.py\n```\n"
+            "Después volvé a abrir esta página."
+        )
+        return
+
+    mh, ma = club_models
+    clubs = sorted(set(club_df["HomeTeam"].unique()) | set(club_df["AwayTeam"].unique()))
+
+    if not clubs:
+        st.warning("No encontré clubes en el dataset procesado. Revisá `data/processed/club_matches_with_features.csv`.")
+        return
+
+    force = st.session_state.get('_club_nav_force', 0)
+    seen = st.session_state.get('_club_nav_force_seen', None)
+    applying = (force != seen)
+
+    def_home = st.session_state.get('club_home', clubs[0])
+    def_away = st.session_state.get('club_away', clubs[1] if len(clubs) > 1 else clubs[0])
+
+    if applying:
+        st.session_state['club_home_sel'] = def_home if def_home in clubs else clubs[0]
+
+    home_team = st.selectbox("🏠 Equipo local (nombre canonical football-data)", clubs, key="club_home_sel")
+
+    avail = [t for t in clubs if t != home_team]
+    if not avail:
+        st.warning("Necesito al menos dos clubes distintos para predecir.")
+        return
+
+    if applying:
+        st.session_state['club_away_sel'] = def_away if def_away in avail else avail[0]
+
+    if 'club_away_sel' not in st.session_state or st.session_state['club_away_sel'] not in avail:
+        st.session_state['club_away_sel'] = avail[0]
+
+    away_team = st.selectbox("✈️ Equipo visitante", avail, key="club_away_sel")
+
+    if applying:
+        st.session_state['_club_nav_force_seen'] = force
+
+    st.caption(
+        "💡 Los nombres acá son los canonical de football-data.co.uk (ej. `Man City`, `Paris SG`, `Ath Madrid`). "
+        "La API y el en vivo aceptan alias tipo `Manchester City`, `Paris Saint-Germain`, `Atlético Madrid` "
+        "y los normaliza automáticamente."
+    )
+
+    if st.button("🔮 Predecir (Hybrid Ensemble de clubes)", type="primary", use_container_width=True):
+        r = predict_club_match(home_team, away_team, False, mh, ma, club_df)
+        if r is None:
+            st.session_state.pop('club_last', None)
+            st.warning(
+                "Este cruce no existe en el histórico intra-liga disponible. "
+                "Puede ser cross-league, Champions/Europa League, Liga AR de clubes o un club nuevo. "
+                "El modelo no inventa números: devuelve `None` y la UI muestra esta limitación honesta."
+            )
+        else:
+            st.session_state['club_last'] = r
+
+    # Mostrar resultado persistido solo si sigue vigente para el par seleccionado.
+    if 'club_last' in st.session_state and st.session_state['club_last']:
+        r = st.session_state['club_last']
+        if r.get("home") != home_team or r.get("away") != away_team:
+            st.session_state.pop('club_last', None)
+        else:
+            st.divider()
+            st.subheader(f"📈 Predicción: {r['home']} vs {r['away']}")
+
+            st.markdown("### 🧬 Desglose del Hybrid Ensemble de clubes")
+            b1, b2, b3 = st.columns(3)
+            b1.metric("xG Modelo ML", f"{r['ml_h']:.2f} – {r['ml_a']:.2f}")
+            b2.metric("xG Paramétrico (ELO)", f"{r['par_h']:.2f} – {r['par_a']:.2f}")
+            b3.metric("Blend aplicado", f"{r['w']*100:.0f}% param. / {(1-r['w'])*100:.0f}% ML")
+
+            st.markdown("### ⚽ Goles Esperados (xG final)")
+            c1, c2 = st.columns(2)
+            c1.metric(f"{r['home']}", f"{r['xg_h']:.2f}")
+            c2.metric(f"{r['away']}", f"{r['xg_a']:.2f}")
+
+            st.info(f"🎯 **Marcador más probable:** {r['home']} {round(r['xg_h'])} - {round(r['xg_a'])} {r['away']}")
+
+            st.divider()
+            st.markdown("### 📊 Probabilidades (Poisson)")
+            m1, m2, m3 = st.columns(3)
+            m1.metric(f"Victoria {r['home']}", f"{r['probs']['home_win']:.1f}%")
+            m2.metric("Empate", f"{r['probs']['draw']:.1f}%")
+            m3.metric(f"Victoria {r['away']}", f"{r['probs']['away_win']:.1f}%")
+
+            if r['probs']['home_win'] > 75:
+                st.success(f"🟢 **{r['home']}** favorito abrumador ({r['probs']['home_win']:.1f}%).")
+            elif r['probs']['home_win'] > 60:
+                st.info(f"🔵 **{r['home']}** claro favorito.")
+            elif r['probs']['away_win'] > 75:
+                st.error(f"🔴 **{r['away']}** favorito abrumador ({r['probs']['away_win']:.1f}%).")
+            elif r['probs']['away_win'] > 60:
+                st.warning(f"🟠 **{r['away']}** favorito.")
+            else:
+                st.warning("🟡 Partido parejo.")
+
+            st.divider()
+            st.markdown("### 🧠 Contexto ELO y fuente")
+            st.caption(
+                f"ELO local: **{r['elo_h']:.0f}** | ELO visitante: **{r['elo_a']:.0f}** | "
+                f"diff: **{r['elo_diff']:+.0f}**"
+            )
+            st.caption(
+                f"📅 Proxy histórico: último cruce disponible en dataset: **{r['date']}** · **{r['league']}**"
+            )
+            st.caption(
+                "⚠️ Limitación honesta: para un partido 2026 en vivo, esta página usa el último cruce histórico "
+                "point-in-time del dataset como proxy. No es un ELO recalculado en vivo 2026. "
+                "Cross-league, Champions/Europa League y Liga AR de clubes quedan fuera por limitación de fuente gratuita."
+            )
+
+
+# ---------------------------------------------------------------------------
+# PAGINA: 🔮 PREDICCION (selecciones, detalle + desglose del blend + cara a cara)
 # ---------------------------------------------------------------------------
 def page_prediccion():
     model_home, model_away = load_models()
@@ -342,7 +486,7 @@ def page_prediccion():
     fifa_ranking = load_fifa_ranking()
     teams = sorted(df["home_team"].unique())
 
-    st.title("🔮 Análisis de Partido")
+    st.title("🔮 Análisis de Partido (Selecciones)")
     st.caption("Seleccioná los equipos (o llegá desde una card) y obtené el desglose del Hybrid Ensemble.")
     st.divider()
 
@@ -510,8 +654,8 @@ def page_modelo():
 
 | Capa | Rol |
 |------|-----|
-| **1. ML (dual XGBoost)** | Predice xG local/visitante desde 18 features leak-free. Domina en partidos parejos. |
-| **2. Paramétrica (Elo/FIFA o ELO clubes)** | Mapea la diferencia de rating a goles esperados (función exponencial). Extrapola a extremos. |
+| **1. ML (dual XGBoost)** | Predice xG local/visitante desde features leak-free. Domina en partidos parejos. |
+| **2. Paramétrica (FIFA/ELO o ELO clubes)** | Mapea la diferencia de rating a goles esperados (función exponencial). Extrapola a extremos. |
 
 El peso paramétrico crece con lo desbalanceado del cruce y se expone por predicción (transparencia, no caja negra).
 
@@ -519,7 +663,7 @@ El peso paramétrico crece con lo desbalanceado del cruce y se expone por predic
 
 **En vivo real:** la tira roja de Jornada consume `src/data/fetch_live.py` (API-Football, solo stdlib). El board v3 agrupa los partidos pitando **por liga en memoria** (1 request, no 6), porque el free tier solo accede a seasons 2022-2024 en el endpoint de grilla — `live=all` sí funciona.
 
-**Clubes:** la segunda cabeza usa `football-data.co.uk` (histórico largo, sin quota) y ELO intra-liga point-in-time. Predice matchups europeos intra-liga existentes en el histórico. Cross-league, Champions/Europa League y Liga AR de clubes quedan fuera por limitación de fuente gratuita. La UI muestra caption honesto cuando el modelo no puede predecir; no inventa números.
+**Clubes:** la página fija **🏟️ Clubes** y el endpoint `/v1/predict/club` usan `football-data.co.uk` (histórico largo, sin quota) y ELO intra-liga point-in-time. Predice matchups europeos intra-liga existentes en el histórico. Cross-league, Champions/Europa League y Liga AR de clubes quedan fuera por limitación de fuente gratuita. La UI muestra caption honesto cuando el modelo no puede predecir; no inventa números.
 
 **Feature engineering:** forma ofensiva/defensiva (últimos 5), fuerza histórica con *shrinkage* bayesiano (K=200), team tier, experience ratio, diffs explícitos y puntos FIFA/ELO. Historiales actualizados *después* de cada partido → cero data leakage.
 
@@ -548,7 +692,7 @@ def main():
         st.caption("Football Analytics Hub")
         st.divider()
         st.radio("Navegación",
-                 ["Jornada", "Destacados", "Predicción", "Ranking", "Equipos", "Modelo"],
+                 ["Jornada", "Destacados", "Clubes", "Predicción", "Ranking", "Equipos", "Modelo"],
                  key="page", label_visibility="collapsed")
         st.divider()
         st.markdown("⚽ *Desarrollado por Augusto Valentini*")
@@ -558,6 +702,8 @@ def main():
         page_jornada()
     elif pg == "Destacados":
         page_partidos()
+    elif pg == "Clubes":
+        page_clubes()
     elif pg == "Predicción":
         page_prediccion()
     elif pg == "Ranking":
