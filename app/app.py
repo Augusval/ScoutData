@@ -1,11 +1,12 @@
 """
-ScoutData AI V12 - Football Analytics Hub (UI sobre el motor desacoplado)
+ScoutData AI V13 - Football Analytics Hub (UI + EN VIVO real)
 ==========================================================================
-Presentación Streamlit. TODA la lógica de predicción vive en
-src/engine/predictor.py (puro, sin streamlit) para que la consuman también
-una API FastAPI y tests. Acá solo hay código de UI (st.*) y el router.
+Presentacion Streamlit. TODA la logica de prediccion vive en
+src/engine/predictor.py (puro, sin streamlit). El en vivo vive en
+src/data/fetch_live.py (stdlib, sin streamlit). Aca solo hay codigo de UI
+(st.*), cache de presentacion y el router.
 
-Páginas: ⚽ Jornada | ⭐ Destacados | 🔮 Predicción | 🏆 Ranking | 👥 Equipos | ℹ️ Modelo
+Paginas: ⚽ Jornada | ⭐ Destacados | 🔮 Prediccion | 🏆 Ranking | 👥 Equipos | ℹ️ Modelo
 Autor: Augusto Valentini
 """
 import sys
@@ -25,11 +26,16 @@ from src.engine.predictor import (  # noqa: E402
     FEATURE_COLUMNS, FIXTURES, JORNADAS, CONFED_LABEL, FORM_WINDOW,
 )
 
+# EN VIVO: src/data no es paquete, se accede por sys.path (mismo patron que
+# predictor.py usa para traer fetch_fifa_ranking). fetch_live usa solo stdlib.
+sys.path.insert(0, str(PROJECT_DIR / "src" / "data"))
+from fetch_live import get_live_board, LIVE_STATUSES, FINISHED_STATUSES, PRE_STATUSES  # noqa: E402
+
 st.set_page_config(page_title="ScoutData — Football Analytics Hub", page_icon="⚽", layout="wide")
 
 
 # ---------------------------------------------------------------------------
-# CACHE UI (el motor entrega versiones puras; streamlit las memoiza acá)
+# CACHE UI (el motor y el fetch entregan versiones puras; streamlit las memoiza)
 # ---------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_models():
@@ -46,8 +52,16 @@ def load_fifa_ranking() -> dict:
     return load_fifa_ranking_pure()
 
 
+@st.cache_data(show_spinner=False, ttl=60)
+def load_live_board():
+    """Cachea el board 60s en memoria de Streamlit. La caché de disco de
+    fetch_live ya tiene TTL 60; esta evita re-leer disco / re-agrupar en cada
+    rerun de UI. 1 request cada 60s max (gracias al FIX E: board = live=all)."""
+    return get_live_board()
+
+
 # ---------------------------------------------------------------------------
-# NAVEGACIÓN PROGRAMÁTICA (flag pending, NO se muta la key del radio)
+# NAVEGACION PROGRAMATICA (flag pending, NO se muta la key del radio)
 # ---------------------------------------------------------------------------
 def go_to_prediction(home, away, neutral=False):
     st.session_state['sel_home'] = home
@@ -74,7 +88,87 @@ def render_match_card(h, a, neutral, key_prefix, model_home, model_away, df, fif
 
 
 # ---------------------------------------------------------------------------
-# PÁGINA: ⚽ JORNADA (barra de jornadas + secciones por confederación)
+# EN VIVO REAL (API-Football) — estructura v3: live + live_by_league (NO 'today')
+# ---------------------------------------------------------------------------
+def _status_chip(fx):
+    s = fx.get("status", "TBD")
+    if s in LIVE_STATUSES:
+        el = fx.get("elapsed")
+        return f"🟢 EN VIVO {el}'" if el else "🟢 EN VIVO"
+    if s in FINISHED_STATUSES:
+        return "✅ Final"
+    if s in PRE_STATUSES:
+        return f"🕐 {fx.get('kick_time') or '--:--'}"
+    return f"⏸ {s}"
+
+
+def render_live_card(fx, teams_set, model_home, model_away, df, fifa_ranking, key):
+    """Fila estilo FotMob: equipos + marcador/hora + chip de estado + boton condicional.
+
+    El boton 'Predecir' SOLO aparece si AMBOS equipos existen en el dataset de
+    selecciones. Si no (clubes, femenino, etc.), caption honesto -> el motor de
+    selecciones no puntua lo que no conoce (no mentimos con un numero inventado).
+    """
+    hs = fx.get("hs"); as_ = fx.get("as")
+    score = f"{hs if hs is not None else '-'} : {as_ if as_ is not None else '-'}"
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([3, 1.4, 3])
+        c1.markdown(f"**{fx['home']}**")
+        c2.markdown(f"<div style='text-align:center;font-size:1.25rem;font-weight:700'>{score}</div>", unsafe_allow_html=True)
+        c3.markdown(f"<div style='text-align:right'>**{fx['away']}**</div>", unsafe_allow_html=True)
+        cc1, cc2 = st.columns([4, 1])
+        cc1.caption(f"🏟️ {fx.get('venue') or '—'}  ·  {fx.get('kick_time') or ''}")
+        cc2.markdown(_status_chip(fx))
+        if fx["home"] in teams_set and fx["away"] in teams_set:
+            if st.button("🔮 Predecir este duelo", key=f"lv_{key}", use_container_width=True):
+                go_to_prediction(fx["home"], fx["away"], False)
+        else:
+            st.caption("🔜 Fuera del modelo de selecciones — próxima capa: **modelo de clubes** (mismo Hybrid Ensemble + tabla de posiciones como ranking).")
+
+
+def render_live_section(board, model_home, model_away, df, fifa_ranking, teams_set):
+    """Tira roja + secciones por liga, desde board['live_by_league'] (v3).
+
+    Degrada elegante: sin key -> tarjeta de setup; quota/red -> caption; ninguna
+    liga propia pitando ahora -> info con el count global (no se pinta firehose
+    de las 77 comps del mundo, solo las que seguís, igual que FotMob).
+    """
+    meta = board.get("meta", {})
+    if meta.get("degraded") == "no_key":
+        st.info(
+            "🔴 **Para ver la jornada EN VIVO real (marcador, minuto) configurá tu API Key gratis de "
+            "[API-Football](https://dashboard.api-football.com):**\n\n"
+            "```\n$env:SCOUTDATA_API_KEY = \"TU_KEY\"\n"
+            "$env:SCOUTDATA_LEAGUE_IDS = \"128,1032,39,140,15\"\n```\n"
+            "Descubrí ids con `python src/data/fetch_live.py --discover Argentina`. "
+            "Mientras tanto, abajo tenés la **jornada histórica con predicciones** del motor de selecciones."
+        )
+        return
+
+    groups = board.get("live_by_league", {})   # ← v3: live_by_league, NUNCA 'today'
+    total = sum(len(rows) for rows in groups.values())
+    if meta.get("degraded"):
+        st.caption(f"⚠️ Fuente parcial ({meta['degraded']}) — mostrando lo disponible.")
+
+    if total > 0:
+        st.subheader(f"🔴 EN VIVO AHORA — {total} partidos en tus ligas")
+        for lname, rows in groups.items():
+            with st.expander(f"{lname}  ·  {len(rows)} en vivo", expanded=True):
+                for i, fx in enumerate(rows):
+                    render_live_card(fx, teams_set, model_home, model_away, df, fifa_ranking, f"{lname}_{i}")
+        st.divider()
+    else:
+        other = len(board.get("live", []))
+        st.info(
+            f"🔴 Ninguna de tus ligas de seguimiento tiene partidos pitando en este momento. "
+            f"(Hay {other} partidos en vivo en otras competiciones del mundo.) "
+            f"La grilla de 'programados no iniciados' (NS) del día requiere season 2026, behind paywall en free — "
+            f"por eso acá solo vemos los que YA están pitando."
+        )
+        st.divider()
+
+# ---------------------------------------------------------------------------
+# PAGINA: ⚽ JORNADA (en vivo real arriba + jornada tematica de selecciones abajo)
 # ---------------------------------------------------------------------------
 def page_jornada():
     model_home, model_away = load_models()
@@ -84,12 +178,15 @@ def page_jornada():
 
     st.title("⚽ Jornada")
     st.caption(
-        "Elegí una jornada, explorá los duelos agrupados por confederación y abrí el análisis. "
-        "**Nota honesta:** no hay marcadores en vivo ni clubes de liga — el motor es de selecciones "
-        "y trabaja sobre histórico. Donde FotMob muestra “En vivo”, acá mostramos nuestra "
-        "**predicción** (chip 🧠)."
+        "**Arriba:** jornada EN VIVO real vía API-Football (marcador + minuto de lo que está pitando ahora). "
+        "**Abajo:** jornada histórica de selecciones con predicción del motor. Donde FotMob muestra “En vivo”, "
+        "acá mostramos marcador real **y** nuestra predicción cuando el motor conoce a los equipos "
+        "(botón 🔮); si no los conoce (clubes, femenino), caption honesto de “próxima capa: clubes”."
     )
     st.divider()
+
+    board = load_live_board()
+    render_live_section(board, model_home, model_away, df, fifa_ranking, teams_set)
 
     selected = st.radio("Jornada", list(JORNADAS.keys()), horizontal=True, label_visibility="collapsed")
     pairs = [(h, a) for h, a in JORNADAS[selected] if h in teams_set and a in teams_set]
@@ -110,7 +207,7 @@ def page_jornada():
 
 
 # ---------------------------------------------------------------------------
-# PÁGINA: ⭐ DESTACADOS (grilla 2xN de matchups curados)
+# PAGINA: ⭐ DESTACADOS (grilla 2xN de matchups curados)
 # ---------------------------------------------------------------------------
 def page_partidos():
     model_home, model_away = load_models()
@@ -133,7 +230,7 @@ def page_partidos():
 
 
 # ---------------------------------------------------------------------------
-# PÁGINA: 🔮 PREDICCIÓN (detalle + desglose del blend + cara a cara)
+# PAGINA: 🔮 PREDICCION (detalle + desglose del blend + cara a cara)
 # ---------------------------------------------------------------------------
 def page_prediccion():
     model_home, model_away = load_models()
@@ -238,7 +335,7 @@ def page_prediccion():
 
 
 # ---------------------------------------------------------------------------
-# PÁGINA: 🏆 RANKING
+# PAGINA: 🏆 RANKING
 # ---------------------------------------------------------------------------
 def page_ranking():
     fifa_ranking = load_fifa_ranking()
@@ -261,7 +358,7 @@ def page_ranking():
 
 
 # ---------------------------------------------------------------------------
-# PÁGINA: 👥 EQUIPOS
+# PAGINA: 👥 EQUIPOS
 # ---------------------------------------------------------------------------
 def page_equipos():
     model_home, model_away = load_models()
@@ -300,7 +397,7 @@ def page_equipos():
 
 
 # ---------------------------------------------------------------------------
-# PÁGINA: ℹ️ MODELO
+# PAGINA: ℹ️ MODELO
 # ---------------------------------------------------------------------------
 def page_modelo():
     st.title("ℹ️ Sobre el Modelo")
@@ -316,13 +413,15 @@ El peso paramétrico crece con lo desbalanceado del cruce y se expone por predic
 
 **Arquitectura desacoplada:** toda la lógica vive en `src/engine/predictor.py` (Python puro, **sin Streamlit**), de modo que la misma la consumen esta UI, una API REST (FastAPI) y tests unitarios. Acá (`app/app.py`) solo hay presentación y navegación.
 
+**En vivo real:** la tira roja de Jornada consume `src/data/fetch_live.py` (API-Football, solo stdlib). El board v3 agrupa los partidos pitando **por liga en memoria** (1 request, no 6), porque el free tier solo accede a seasons 2022-2024 en el endpoint de grilla — `live=all` sí funciona. Donde el motor de selecciones no conoce a los equipos (clubes, femenino), la UI muestra caption honesto de "próxima capa: clubes" en vez de un número inventado.
+
 **Feature engineering:** forma ofensiva/defensiva (últimos 5), fuerza histórica con *shrinkage* bayesiano (K=200), team tier, experience ratio, diffs explícitos y puntos FIFA en vivo. Historiales actualizados *después* de cada partido → cero data leakage.
 
 **Ranking auto-actualizable:** cascada Wikipedia (Top 20 oficial) + snapshot ELO (150 equipos, escala `0.85·ELO−300`) + fallback. Ejecutá `python src/data/update_ranking.py`.
 
-**Limitaciones honestas:** ranking snapshot actual (no point-in-time); equipos sin FIFA = 700 pts; sin alineaciones/lesiones; los tree models no extrapolan solos — de ahí la capa paramétrica (decisión de diseño).
+**Limitaciones honestas:** ranking snapshot actual (no point-in-time); equipos sin FIFA = 700 pts; sin alineaciones/lesiones; los tree models no extrapolan solos — de ahí la capa paramétrica (decisión de diseño). La grilla de "programados no iniciados" (NS) del día requiere season 2026, behind paywall en free.
 
-**Stack:** Python · Pandas · XGBoost · Scikit-Learn · SciPy (Poisson) · Streamlit · BeautifulSoup.
+**Stack:** Python · Pandas · XGBoost · Scikit-Learn · SciPy (Poisson) · Streamlit · FastAPI · BeautifulSoup · API-Football.
 
 ⚽ Desarrollado por **Augusto Valentini** — Ingeniería en Informática (UADE).
 """)
