@@ -1,36 +1,47 @@
-# --- Python / entornos ---
+Set-Content -Path .gitignore -Encoding ascii -Value @'
+# ScoutData .gitignore - version canonica (ASCII, reescrito por terminal)
+# Python / venv
 venv/
 .venv/
+env/
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+build/
+dist/
+# caches de tests/build
 .pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
 .ipynb_checkpoints/
-*.log
-
-# --- Datos: raw se descarga de Kaggle (ver README), processed/external SÍ van ---
+# datos crudos: se descargan, NO se versionan
 data/raw/
-# data/processed/   <- incluido a proposito (permite "clonar y correr")
-# data/external/*.json  <- incluido (ranking versionado)
-
-# --- Modelos: incluidos para que la API responda sin reentrenar ---
-# (descomentá la línea de abajo SOLO si los .joblib pesan >50MB)
-# src/models/*.joblib
-
-# --- IDE / SO ---
+# cache de RUNTIME de fetch_live (artefacto, no source of truth)
+# OJO: data/external/fifa_ranking_2026.json SI entra (source of truth)
+data/external/live_cache/
+# IDE / SO
 .vscode/
 .idea/
+*.swp
+*~
 .DS_Store
 Thumbs.db
-
-# --- Secrets (la API key de API-Football NUNCA se commitea) ---
+desktop.ini
+# secrets: la API key NUNCA se commitea
 .env
+.env.*
 *.key
 secrets/
-
-# --- Node (por si algún día hay tooling JS adentro; el repo Expo es HERMANO, no hijo) ---
+credentials.json
+# logs
+*.log
+logs/
+# node (tooling futuro; el repo Expo es HERMANO, no hijo)
 node_modules/
-# API-Football runtime cache (artefacto, no source of truth)
-/data/external/live_cache/
-data/external/live_cache/
-data/external/live_cache/*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+'@
