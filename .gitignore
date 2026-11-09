@@ -30,3 +30,7 @@ secrets/
 
 # --- Node (por si algún día hay tooling JS adentro; el repo Expo es HERMANO, no hijo) ---
 node_modules/
+# API-Football runtime cache (artefacto, no source of truth)
+/data/external/live_cache/
+data/external/live_cache/
+data/external/live_cache/*
